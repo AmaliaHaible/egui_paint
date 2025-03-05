@@ -78,7 +78,7 @@ impl Line {
             // fuck this
             (0..=30)
                 .into_iter()
-                .any(|i| Self::segment_contains_point(s, e, w, c + (d - c) * i as f32 / 10.0))
+                .any(|i| Self::segment_contains_point(s, e, w, c + (d - c) * i as f32 / 30.0))
         })
     }
 }
