@@ -282,13 +282,13 @@ impl MyEguiApp {
             if !lastaction.unerased_lines.is_empty() {
                 let mut to_erase = Vec::default();
                 self.lines.retain(|line| {
-                    lastaction.unerased_lines.iter().any(|line_to_erase| {
+                    !lastaction.unerased_lines.iter().any(|line_to_erase| {
                         let keep = *line_to_erase != line.id;
                         if keep{
-                            true
+                            false
                         }else{
                             to_erase.push(line.clone());
-                            false
+                            true
                         }
                     })
                 });
@@ -339,11 +339,17 @@ impl MyEguiApp {
             }
             let undokey = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z);
             let redokey = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Y);
+            let resetkey = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::R);
             if i.consume_shortcut(&undokey) {
                 self.undo();
             }
             if i.consume_shortcut(&redokey) {
                 self.redo();
+            }
+            if i.consume_shortcut(&resetkey){
+                self.lines = Vec::default();
+                self.redo_stack = Vec::default();
+                self.undo_stack = Vec::default();
             }
 
             // zoom?
