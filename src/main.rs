@@ -1,5 +1,6 @@
 use eframe;
 use eframe::egui::{self, Color32, Pos2};
+use rand::{Rng, rng};
 use std::time::Instant;
 fn main() {
     let nativeoptions = eframe::NativeOptions::default();
@@ -11,10 +12,11 @@ fn main() {
     .unwrap()
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Line {
     points: Vec<egui::Pos2>,
     stroke: egui::Stroke,
+    id: u64,
 }
 impl Line {
     fn from_point(p: egui::Pos2, s: egui::Stroke) -> Line {
@@ -22,6 +24,7 @@ impl Line {
             // just to make it easy, every line is at least 2 points:
             points: vec![p, p],
             stroke: s,
+            id: rng().random(),
         }
     }
 
@@ -79,6 +82,16 @@ impl Line {
         })
     }
 }
+
+struct DrawAction {
+    drawn_line_id: Option<u64>,
+    erased_lines: Vec<Line>,
+}
+struct RedoAction {
+    undone_line: Option<Line>,
+    unerased_lines: Vec<u64>,
+}
+
 struct MyEguiApp {
     lines: Vec<Line>,
     append_to_last_line: bool,
@@ -86,6 +99,8 @@ struct MyEguiApp {
     current_zoomlevel: f32,
     current_position: egui::Pos2,
     last_mousepos: egui::Pos2,
+    undo_stack: Vec<DrawAction>,
+    redo_stack: Vec<RedoAction>,
     last_frametime: Instant,
 }
 
@@ -98,6 +113,8 @@ impl Default for MyEguiApp {
             current_zoomlevel: 1.0,
             current_position: egui::Pos2::default(),
             last_mousepos: egui::Pos2::default(),
+            undo_stack: Vec::default(),
+            redo_stack: Vec::default(),
             last_frametime: Instant::now(),
         }
     }
@@ -122,9 +139,17 @@ impl MyEguiApp {
     }
 
     fn draw(&mut self, ui: &mut egui::Ui) {
-        // for line in &self.lines {
-        //     ui.painter().line(line.points.clone(), line.stroke);
-        // }
+        /* ui.painter()
+        .add(eframe::epaint::QuadraticBezierShape::from_points_stroke(
+            [
+                Pos2::new(50.0, 50.0),
+                Pos2::new(50.0, 100.0),
+                Pos2::new(100.0, 100.0),
+            ],
+            false,
+            Color32::from_black_alpha(0),
+            egui::Stroke::new(32.0, Color32::BLUE),
+        )); */
         self.lines.iter().for_each(|line| {
             /* ui.painter().line(
                 line.points
@@ -157,7 +182,13 @@ impl MyEguiApp {
             line.points.windows(2).for_each(|window| {
                 let s = window[0];
                 let e = window[1];
-                ui.painter().line_segment([self.world_to_screen(s),self.world_to_screen(e)], egui::Stroke::new(line.stroke.width*self.current_zoomlevel, line.stroke.color));
+                ui.painter().line_segment(
+                    [self.world_to_screen(s), self.world_to_screen(e)],
+                    egui::Stroke::new(
+                        line.stroke.width * self.current_zoomlevel,
+                        line.stroke.color,
+                    ),
+                );
             })
         });
     }
@@ -184,16 +215,93 @@ impl MyEguiApp {
         }
     }
 
-    fn erase_line(&mut self, p: egui::Pos2) {
+    fn erase_lines(&mut self, p: egui::Pos2) {
         let point = self.screen_to_world(p);
         let lastpoint = self.screen_to_world(self.last_mousepos);
         // self.lines.retain(|line| !line.contains_point(point));
-        self.lines
-            .retain(|line| !line.overlaps_line(point, lastpoint));
+        //self.lines.retain(|line| !line.overlaps_line(point, lastpoint));
+        self.lines.retain(|line| {
+            let overlaps = line.overlaps_line(point, lastpoint);
+            if overlaps {
+                if self.undo_stack.is_empty()
+                    || self.undo_stack.last().unwrap().erased_lines.is_empty()
+                {
+                    self.undo_stack.push(DrawAction {
+                        drawn_line_id: None,
+                        erased_lines: vec![line.clone()],
+                    });
+                } else {
+                    if let Some(lastaction) = self.undo_stack.last_mut() {
+                        if !lastaction.erased_lines.is_empty() {
+                            lastaction.erased_lines.push(line.clone());
+                        }
+                    }
+                }
+                false
+            } else {
+                true
+            }
+        });
+    }
+    fn undo(&mut self) {
+        if let Some(mut lastaction) = self.undo_stack.pop() {
+            assert!(lastaction.drawn_line_id.is_none() || lastaction.erased_lines.is_empty());
+            if let Some(drawnline) = lastaction.drawn_line_id {
+                self.lines.retain(|line| {
+                    let keep = line.id != drawnline;
+                    if keep {
+                        true
+                    } else {
+                        self.redo_stack.push(RedoAction {
+                            undone_line: Some(line.clone()),
+                            unerased_lines: Vec::default(),
+                        });
+                        false
+                    }
+                });
+            }
+            if !lastaction.erased_lines.is_empty() {
+                self.redo_stack.push(RedoAction {
+                    undone_line: None,
+                    unerased_lines: lastaction.erased_lines.iter().map(|l| l.id).collect(),
+                });
+                self.lines.append(&mut lastaction.erased_lines);
+            }
+        }
+    }
+    fn redo(&mut self) {
+        if let Some(lastaction) = self.redo_stack.pop() {
+            if let Some(line) = lastaction.undone_line {
+                let id = line.id;
+                self.lines.push(line);
+                self.undo_stack.push(DrawAction {
+                    drawn_line_id: Some(id),
+                    erased_lines: Vec::default(),
+                });
+            }
+            if !lastaction.unerased_lines.is_empty() {
+                let mut to_erase = Vec::default();
+                self.lines.retain(|line| {
+                    lastaction.unerased_lines.iter().any(|line_to_erase| {
+                        let keep = *line_to_erase != line.id;
+                        if keep{
+                            true
+                        }else{
+                            to_erase.push(line.clone());
+                            false
+                        }
+                    })
+                });
+                self.undo_stack.push(DrawAction {
+                    drawn_line_id: None,
+                    erased_lines: to_erase,
+                });
+            }
+        }
     }
 
     fn handle_input(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
+        ctx.input_mut(|i| {
             // Drawing
             if i.pointer.primary_down() {
                 if let Some(p) = i.pointer.latest_pos() {
@@ -201,6 +309,14 @@ impl MyEguiApp {
                 }
                 self.append_to_last_line = true;
             } else {
+                if self.append_to_last_line {
+                    if let Some(last) = self.lines.last() {
+                        self.undo_stack.push(DrawAction {
+                            drawn_line_id: Some(last.id),
+                            erased_lines: Vec::default(),
+                        });
+                    }
+                }
                 self.append_to_last_line = false;
             }
             // Change Stroke size
@@ -218,8 +334,16 @@ impl MyEguiApp {
             // erase
             if i.pointer.secondary_down() {
                 if let Some(p) = i.pointer.latest_pos() {
-                    self.erase_line(p);
+                    self.erase_lines(p);
                 }
+            }
+            let undokey = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Z);
+            let redokey = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Y);
+            if i.consume_shortcut(&undokey) {
+                self.undo();
+            }
+            if i.consume_shortcut(&redokey) {
+                self.redo();
             }
 
             // zoom?
@@ -259,11 +383,14 @@ impl eframe::App for MyEguiApp {
             if deltatime > 0.0 {
                 fps = 1.0 / deltatime;
             }
+
             ui.heading(format!(
-                "Lines: {:?}, Stroke Width: {:.2}, FPS: {:.2}",
+                "Lines: {:?}, Stroke Width: {:.2}, FPS: {:.2}, Undo: {:?}, Redo: {:?}",
                 self.lines.len(),
                 self.current_stroke.width,
                 fps,
+                self.undo_stack.len(),
+                self.redo_stack.len(),
             ));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
