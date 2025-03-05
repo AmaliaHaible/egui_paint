@@ -102,6 +102,7 @@ struct MyEguiApp {
     undo_stack: Vec<DrawAction>,
     redo_stack: Vec<RedoAction>,
     last_frametime: Instant,
+    lowest_fps: f32,
 }
 
 impl Default for MyEguiApp {
@@ -116,6 +117,7 @@ impl Default for MyEguiApp {
             undo_stack: Vec::default(),
             redo_stack: Vec::default(),
             last_frametime: Instant::now(),
+            lowest_fps: 600.0,
         }
     }
 }
@@ -284,9 +286,9 @@ impl MyEguiApp {
                 self.lines.retain(|line| {
                     !lastaction.unerased_lines.iter().any(|line_to_erase| {
                         let keep = *line_to_erase != line.id;
-                        if keep{
+                        if keep {
                             false
-                        }else{
+                        } else {
                             to_erase.push(line.clone());
                             true
                         }
@@ -346,7 +348,7 @@ impl MyEguiApp {
             if i.consume_shortcut(&redokey) {
                 self.redo();
             }
-            if i.consume_shortcut(&resetkey){
+            if i.consume_shortcut(&resetkey) {
                 self.lines = Vec::default();
                 self.redo_stack = Vec::default();
                 self.undo_stack = Vec::default();
@@ -389,12 +391,18 @@ impl eframe::App for MyEguiApp {
             if deltatime > 0.0 {
                 fps = 1.0 / deltatime;
             }
+            if fps < 10.0{
+                println!("FPS low: {:.3}", fps);
+            }else {
+                self.lowest_fps = self.lowest_fps.min(fps);
+            }
 
             ui.heading(format!(
-                "Lines: {:?}, Stroke Width: {:.2}, FPS: {:.2}, Undo: {:?}, Redo: {:?}",
+                "Lines: {:?}, Stroke Width: {:.2}, FPS: {:.2}, Lowest FPS: {:.2}, Undo: {:?}, Redo: {:?}",
                 self.lines.len(),
                 self.current_stroke.width,
                 fps,
+                self.lowest_fps,
                 self.undo_stack.len(),
                 self.redo_stack.len(),
             ));
