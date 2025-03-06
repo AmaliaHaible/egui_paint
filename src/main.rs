@@ -385,6 +385,7 @@ impl MyEguiApp {
 impl eframe::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut markfordraw = false;
+        let mut slider_clicked = false;
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let now = Instant::now();
@@ -399,10 +400,11 @@ impl eframe::App for MyEguiApp {
                 }
 
                 ui.heading("Stroke Width: ");
-                let _stroke_slider = ui.add(egui::Slider::new(
+                let stroke_slider = ui.add(egui::Slider::new(
                     &mut self.current_stroke.width,
                     1.0..=50.0,
                 ));
+                slider_clicked = stroke_slider.dragged();
                 let colorpicker = egui::widgets::color_picker::color_edit_button_srgba(
                     ui,
                     &mut self.current_stroke.color,
@@ -433,7 +435,7 @@ impl eframe::App for MyEguiApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             self.draw(ui);
-            self.handle_input(ctx, ui.ui_contains_pointer() && !self.color_picker_open);
+            self.handle_input(ctx, ui.ui_contains_pointer() && !self.color_picker_open && !slider_clicked);
         });
         if markfordraw {
             self.color_picker_open = false;
