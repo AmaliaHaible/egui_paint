@@ -102,7 +102,7 @@ struct MyEguiApp {
     undo_stack: Vec<DrawAction>,
     redo_stack: Vec<RedoAction>,
     last_frametime: Instant,
-    lowest_fps: f32,
+    color_picker_open: bool,
 }
 
 impl Default for MyEguiApp {
@@ -117,7 +117,7 @@ impl Default for MyEguiApp {
             undo_stack: Vec::default(),
             redo_stack: Vec::default(),
             last_frametime: Instant::now(),
-            lowest_fps: 600.0,
+            color_picker_open: false,
         }
     }
 }
@@ -302,10 +302,10 @@ impl MyEguiApp {
         }
     }
 
-    fn handle_input(&mut self, ctx: &egui::Context) {
+    fn handle_input(&mut self, ctx: &egui::Context, handle_mouse: bool) {
         ctx.input_mut(|i| {
             // Drawing
-            if i.pointer.primary_down() {
+            if i.pointer.primary_down() && handle_mouse {
                 if let Some(p) = i.pointer.latest_pos() {
                     self.add_point(p);
                 }
@@ -334,7 +334,7 @@ impl MyEguiApp {
             self.current_stroke.width = self.current_stroke.width.max(1.0);
 
             // erase
-            if i.pointer.secondary_down() {
+            if i.pointer.secondary_down() && handle_mouse {
                 if let Some(p) = i.pointer.latest_pos() {
                     self.erase_lines(p);
                 }
@@ -382,34 +382,60 @@ impl MyEguiApp {
 
 impl eframe::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.handle_input(ctx);
+        let mut markfordraw = false;
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            let now = Instant::now();
-            let deltatime = now.duration_since(self.last_frametime).as_secs_f32();
-            self.last_frametime = now;
-            let mut fps = 0.0;
-            if deltatime > 0.0 {
-                fps = 1.0 / deltatime;
-            }
-            if fps < 10.0{
-                println!("FPS low: {:.3}", fps);
-            }else {
-                self.lowest_fps = self.lowest_fps.min(fps);
-            }
+            ui.horizontal(|ui| {
+                let now = Instant::now();
+                let deltatime = now.duration_since(self.last_frametime).as_secs_f32();
+                self.last_frametime = now;
+                let mut fps = 0.0;
+                if deltatime > 0.0 {
+                    fps = 1.0 / deltatime;
+                }
+                if fps < 10.0 && cfg!(debug_assertions) {
+                    println!("FPS low: {:.3}, Timestamp: {:?}", fps, now);
+                }
 
-            ui.heading(format!(
-                "Lines: {:?}, Stroke Width: {:.2}, FPS: {:.2}, Lowest FPS: {:.2}, Undo: {:?}, Redo: {:?}",
-                self.lines.len(),
-                self.current_stroke.width,
-                fps,
-                self.lowest_fps,
-                self.undo_stack.len(),
-                self.redo_stack.len(),
-            ));
+                ui.heading("Stroke Width: ");
+                let _stroke_slider = ui.add(egui::Slider::new(
+                    &mut self.current_stroke.width,
+                    1.0..=50.0,
+                ));
+                let colorpicker = egui::widgets::color_picker::color_edit_button_srgba(
+                    ui,
+                    &mut self.current_stroke.color,
+                    egui::widgets::color_picker::Alpha::Opaque,
+                );
+                if colorpicker.clicked() {
+                    self.color_picker_open = !self.color_picker_open;
+                }
+                if self.color_picker_open && colorpicker.clicked_elsewhere() {
+                    markfordraw = true;
+                }
+
+                if self.color_picker_open && cfg!(debug_assertions) {
+                    ui.heading("AAA");
+                }
+                ui.heading(format!(
+                    "Lines: {:?}, FPS: {:.2}, Undo: {:?}, Redo: {:?}",
+                    self.lines.len(),
+                    fps,
+                    self.undo_stack.len(),
+                    self.redo_stack.len(),
+                ));
+            });
         });
+        /* egui::TopBottomPanel::bottom("bottom").show(ctx, |ui|{
+
+        }); */
+
         egui::CentralPanel::default().show(ctx, |ui| {
             self.draw(ui);
+            self.handle_input(ctx, ui.ui_contains_pointer() && !self.color_picker_open);
         });
+        if markfordraw {
+            self.color_picker_open = false;
+        }
         ctx.request_repaint();
     }
 }
