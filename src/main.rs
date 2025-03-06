@@ -398,12 +398,13 @@ impl eframe::App for MyEguiApp {
                 if fps < 10.0 && self.show_debug  {
                     println!("FPS low: {:.3}, Timestamp: {:?}", fps, now);
                 }
+                ui.style_mut().spacing.slider_width = 200.0;
 
                 ui.heading("Stroke Width: ");
                 let stroke_slider = ui.add(egui::Slider::new(
                     &mut self.current_stroke.width,
                     1.0..=50.0,
-                ));
+                ).step_by(1.0));
                 slider_clicked = stroke_slider.dragged();
                 let colorpicker = egui::widgets::color_picker::color_edit_button_srgba(
                     ui,
@@ -427,6 +428,7 @@ impl eframe::App for MyEguiApp {
                     self.undo_stack.len(),
                     self.redo_stack.len(),
                 ));
+                
             });
         });
         /* egui::TopBottomPanel::bottom("bottom").show(ctx, |ui|{
