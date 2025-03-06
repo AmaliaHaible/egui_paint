@@ -103,6 +103,7 @@ struct MyEguiApp {
     redo_stack: Vec<RedoAction>,
     last_frametime: Instant,
     color_picker_open: bool,
+    show_debug: bool,
 }
 
 impl Default for MyEguiApp {
@@ -118,6 +119,7 @@ impl Default for MyEguiApp {
             redo_stack: Vec::default(),
             last_frametime: Instant::now(),
             color_picker_open: false,
+            show_debug: false, // CHANGE THIS FOR DEBUG INFO
         }
     }
 }
@@ -392,7 +394,7 @@ impl eframe::App for MyEguiApp {
                 if deltatime > 0.0 {
                     fps = 1.0 / deltatime;
                 }
-                if fps < 10.0 && cfg!(debug_assertions) {
+                if fps < 10.0 && self.show_debug  {
                     println!("FPS low: {:.3}, Timestamp: {:?}", fps, now);
                 }
 
@@ -413,8 +415,8 @@ impl eframe::App for MyEguiApp {
                     markfordraw = true;
                 }
 
-                if self.color_picker_open && cfg!(debug_assertions) {
-                    ui.heading("AAA");
+                if self.color_picker_open && self.show_debug {
+                    ui.heading("Color Picker Open");
                 }
                 ui.heading(format!(
                     "Lines: {:?}, FPS: {:.2}, Undo: {:?}, Redo: {:?}",
